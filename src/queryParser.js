@@ -1,8 +1,17 @@
-function parseQuery(query) {
+function parseSelectQuery(query) {
     try {
 
         // Trim the query to remove any leading/trailing whitespaces
         query = query.trim();
+
+        // Initialize distinct flag
+        let isDistinct = false;
+
+        // Check for DISTINCT keyword and update the query
+        if (query.toUpperCase().includes('SELECT DISTINCT')) {
+            isDistinct = true;
+            query = query.replace('SELECT DISTINCT', 'SELECT');
+        }
 
         // Updated regex to capture LIMIT clause and remove it for further processing
         const limitRegex = /\sLIMIT\s(\d+)/i;
@@ -74,10 +83,10 @@ function parseQuery(query) {
             groupByFields,
             orderByFields,
             hasAggregateWithoutGroupBy,
-            limit
+            limit,
+            isDistinct
         };
     } catch (error) {
-        console.log(error.message);
         throw new Error(`Query parsing error: ${error.message}`);
     }
 }
@@ -88,14 +97,19 @@ function checkAggregateWithoutGroupBy(query, groupByFields) {
 }
 
 function parseWhereClause(whereString) {
-    const conditionRegex = /(.*?)(=|!=|>|<|>=|<=)(.*)/;
+    const conditionRegex = /(.*?)(=|!=|>=|<=|>|<)(.*)/;
     return whereString.split(/ AND | OR /i).map(conditionString => {
-        const match = conditionString.match(conditionRegex);
-        if (match) {
-            const [, field, operator, value] = match;
-            return { field: field.trim(), operator, value: value.trim() };
+        if (conditionString.includes(' LIKE ')) {
+            const [field, pattern] = conditionString.split(/\sLIKE\s/i);
+            return { field: field.trim(), operator: 'LIKE', value: pattern.trim().replace(/^'(.*)'$/, '$1') };
+        } else {
+            const match = conditionString.match(conditionRegex);
+            if (match) {
+                const [, field, operator, value] = match;
+                return { field: field.trim(), operator, value: value.trim() };
+            }
+            throw new Error('Invalid WHERE clause format');
         }
-        throw new Error('Invalid WHERE clause format');
     });
 }
 
@@ -121,4 +135,43 @@ function parseJoinClause(query) {
     };
 }
 
-module.exports = { parseQuery, parseJoinClause };
+function parseInsertQuery(query) {
+    const insertRegex = /INSERT INTO (\w+)\s\((.+)\)\sVALUES\s\((.+)\)/i;
+    const match = query.match(insertRegex);
+
+    if (!match) {
+        throw new Error("Invalid INSERT INTO syntax.");
+    }
+
+    const [, table, columns, values] = match;
+    return {
+        type: 'INSERT',
+        table: table.trim(),
+        columns: columns.split(',').map(column => column.trim()),
+        values: values.split(',').map(value => value.trim())
+    };
+}
+
+function parseDeleteQuery(query) {
+    const deleteRegex = /DELETE FROM (\w+)( WHERE (.*))?/i;
+    const match = query.match(deleteRegex);
+
+    if (!match) {
+        throw new Error("Invalid DELETE syntax.");
+    }
+
+    const [, table, , whereString] = match;
+    let whereClauses = [];
+    if (whereString) {
+        whereClauses = parseWhereClause(whereString);
+    }
+
+    return {
+        type: 'DELETE',
+        table: table.trim(),
+        whereClauses
+    };
+}
+
+
+module.exports = { parseSelectQuery, parseJoinClause, parseInsertQuery, parseDeleteQuery };
