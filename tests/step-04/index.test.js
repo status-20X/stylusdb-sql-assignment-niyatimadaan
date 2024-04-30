@@ -10,6 +10,15 @@ test('Read CSV File', async () => {
     expect(data[0].age).toBe('30'); //ignore the string type here, we will fix this later
 });
 
+test('Parse SQL Query', () => {
+    const query = 'SELECT id, name FROM sample';
+    const parsed = parseSelectQuery(query);
+    expect(parsed).toMatchObject({
+        fields: ['id', 'name'],
+        table: 'sample'
+    });
+});
+
 test('Execute SQL Query', async () => {
     const query = 'SELECT id, name FROM student';
     const result = await executeSELECTQuery(query);
